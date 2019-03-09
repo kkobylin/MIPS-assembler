@@ -1,0 +1,153 @@
+.data
+prompt: .asciiz "Enter value in degrees between 5 and 85\n"
+errprompt: .asciiz "The value must be between 5 and 85\n"
+endprompt: .asciiz "The value of the cosinus and sinus are equal:\n"
+enterprompt: .asciiz "\n"
+.text
+.globl main
+
+main:
+	li $v0, 4
+        la $a0, prompt
+        syscall
+	li $v0, 5
+	syscall
+	#maksymalny zakres katow
+	#dla ujemnych nastepuje przesuniecie bitowe w lewo co w U2 skutkuje ogromna liczba dodatnia
+	li $t0, 5
+	li $t1, 85
+	#sprawdzenie warunku
+	#blt $v0, $t0, error
+	#bgt $v0, $t1, error
+	#wartosc podana zapisana w v0
+	sll $v0, $v0, 15
+	
+	#zapisanie katow do pamieci(3 ostatnie miejsca po przecinku)
+	lui $t6, 0x1000
+	#katy pomnozone przez 2^15 ,15 cyfr zarezerwowanych na ulamek
+	li $s0, 1474560
+	li $s1, 870483
+	li $s2, 459939
+	li $s3, 233472
+	li $s4, 117189
+	li $s5, 58651
+	li $s6, 29333
+	li $s7, 14667
+	
+	sw $s0,  0($t6)
+	sw $s1,  4($t6)
+	sw $s2,  8($t6)
+	sw $s3,  12($t6)
+	sw $s4,  16($t6)
+	sw $s5,  20($t6)
+	sw $s6,  24($t6)
+	sw $s7,  28($t6)
+	
+	li $s0,7333
+	li $s1,3666
+	li $s2,1833
+	li $s3,916
+	
+	sw $s0,  32($t6)
+	sw $s1,  36($t6)
+	sw $s2,  40($t6)
+	sw $s3,  44($t6)
+
+	#zapisanie wartosci 1/K=19890, oraz wstepnych wartosci cos-t8 i sin-t9
+	li $t8, 19890
+	la $t9, ($zero)
+	#numer iteracji w kl
+	li $k1, 0
+	#W t0 wartosc zsumowany katow
+	la $t0, ($zero)
+	j loop
+subangle:
+	sub $t0, $t0, $t1
+	j backtoloop
+addangle:
+	add $t0, $t0, $t1
+	j backtoloop
+csubs:
+	sub $t2, $t8, $t1
+	jr $ra
+cadds:
+	add $t2, $t8, $t1
+	jr $ra
+saddc:
+	add $t3, $t9, $t1
+	jr $ra
+ssubc:
+	sub $t3, $t9, $t1
+	jr $ra
+loop:
+	#sprawdzenie roznicy zadanego kata i zsumowanych katow
+	sub $t4, $v0, $t0
+	
+	#Obliczamy nowego cosinusa
+	srlv $t1, $t9, $k1
+	bgezal $t4, csubs
+	bltzal $t4, cadds
+	
+	#Obliczamy nowego sinusa
+	srlv $t1, $t8, $k1
+	bgezal $t4, saddc
+	bltzal $t4, ssubc
+	
+	or $t8, $t2, $zero
+	or $t9, $t3, $zero
+	
+	#pobieramy kolejny kat z pamieci i dodajemy lub odejmujemy od sumy
+	lw $t1, 0($t6)
+	bltz $t4, subangle
+	j addangle
+backtoloop:
+	#przesuniecie adresu w t6 na kolejny kat
+	addi $t6, $t6, 4
+	#inkrementacja iteracji
+	addi $k1, $k1, 1
+	
+	#sprawdzenie czy koniec petli
+	subi $t1, $k1, 12
+	
+	bnez $t1, loop 
+	j end
+	
+error:
+	li $v0, 4
+        la $a0, errprompt
+        syscall	
+        li $v0, 10
+        syscall
+        
+end:
+	li $v0, 4
+        la $a0, endprompt
+        syscall
+        #Przedstawianie cosinusa
+        #sw $t8, 103($t8)
+	#lwc1 $f1, 103($t8)
+	#przecunie wyniku do rejestru f12
+	mtc1 $t8, $f12
+	#konwersja slowa na float
+	cvt.s.w $f12, $f12
+	#podzielenie wyniku przez 2^15
+	li $t1, 32768
+	mtc1 $t1, $f11
+	cvt.s.w $f11, $f11
+	div.s $f12, $f12, $f11
+	#wyswietlenie floata
+        li $v0, 2
+        syscall
+        li $v0, 4
+        la $a0, enterprompt
+        syscall
+        #przedstawienie sinusa
+	mtc1 $t9, $f12
+	cvt.s.w $f12, $f12
+	li $t1, 32768
+	mtc1 $t1, $f11
+	cvt.s.w $f11, $f11
+	div.s $f12, $f12, $f11
+	li $v0, 2
+        syscall
+	
