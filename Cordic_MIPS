@@ -1,0 +1,150 @@
+.data
+prompt: .asciiz "Enter value in degrees between -89 and 89\n"
+errprompt: .asciiz "The value must be between -89 and 89\n"
+endprompt: .asciiz "The value of the cosinus and sinus are equal:\n"
+enterprompt: .asciiz "\n"
+.text
+.globl main
+
+main:
+	li $v0, 4
+        la $a0, prompt
+        syscall
+	li $v0, 5
+	syscall
+	#maksymalny zakres katow
+	li $t0, -89
+	li $t1, 89
+	#sprawdzenie warunku
+	blt $v0, $t0, error
+	bgt $v0, $t1, error
+	#wartosc podana zapisana w v0, przesuniecie o 24 bity
+	sll $v0, $v0, 24
+	
+	#zapisanie katow do pamieci
+	lui $t6, 0x1000
+	#katy pomnozone przez 2^24 ,24 cyfry zarezerwowane na ulamek
+	li $s0, 754974720
+	li $s1, 445687296
+	li $s2, 235488768
+	li $s3, 119537664
+	li $s4, 60000768
+	li $s5, 30029312
+	li $s6, 15018496
+	li $s7, 7509504
+	
+	sw $s0,  0($t6)
+	sw $s1,  4($t6)
+	sw $s2,  8($t6)
+	sw $s3,  12($t6)
+	sw $s4,  16($t6)
+	sw $s5,  20($t6)
+	sw $s6,  24($t6)
+	sw $s7,  28($t6)
+	
+	li $s0,3754496
+	li $s1,1876992
+	li $s2,938496
+	li $s3,468992
+	
+	sw $s0,  32($t6)
+	sw $s1,  36($t6)
+	sw $s2,  40($t6)
+	sw $s3,  44($t6)
+
+	#zapisanie wstepnych wartosci cosinusa i sinusa 1/K*2^24 do cos-t8 i 0 do sin-t9
+	li $t8, 10188013
+	la $t9, ($zero)
+	#numer iteracji w kl
+	li $k1, 0
+	#W t0 wartosc zsumowany katow
+	la $t0, ($zero)
+	j loop
+subangle:
+	sub $t0, $t0, $t1
+	j backtoloop
+addangle:
+	add $t0, $t0, $t1
+	j backtoloop
+csubs:
+	sub $t2, $t8, $t1
+	jr $ra
+cadds:
+	add $t2, $t8, $t1
+	jr $ra
+saddc:
+	add $t3, $t9, $t1
+	jr $ra
+ssubc:
+	sub $t3, $t9, $t1
+	jr $ra
+loop:
+	#sprawdzenie roznicy zadanego kata i zsumowanych katow
+	sub $t4, $v0, $t0
+	
+	#Obliczamy nowego cosinusa
+	srav $t1, $t9, $k1
+	bgezal $t4, csubs
+	bltzal $t4, cadds
+	
+	#Obliczamy nowego sinusa
+	srav $t1, $t8, $k1
+	bgezal $t4, saddc
+	bltzal $t4, ssubc
+	
+	or $t8, $t2, $zero
+	or $t9, $t3, $zero
+	
+	#pobieramy kolejny kat z pamieci i dodajemy lub odejmujemy od sumy
+	lw $t1, 0($t6)
+	bltz $t4, subangle
+	j addangle
+backtoloop:
+	#przesuniecie adresu w t6 na kolejny kat
+	addi $t6, $t6, 4
+	#inkrementacja iteracji
+	addi $k1, $k1, 1
+	
+	#sprawdzenie czy koniec petli
+	subi $t1, $k1, 12
+	
+	bnez $t1, loop 
+	j end
+	
+error:
+	li $v0, 4
+        la $a0, errprompt
+        syscall	
+        li $v0, 10
+        syscall
+        
+end:
+	li $v0, 4
+        la $a0, endprompt
+        syscall
+        #Przedstawianie cosinusa
+	#przecunie wyniku do rejestru f12
+	mtc1 $t8, $f12
+	#konwersja slowa na float
+	cvt.s.w $f12, $f12
+	#podzielenie wyniku przez 2^24
+	li $t1, 16777216
+	mtc1 $t1, $f11
+	cvt.s.w $f11, $f11
+	div.s $f12, $f12, $f11
+	#wyswietlenie floata
+        li $v0, 2
+        syscall
+        li $v0, 4
+        la $a0, enterprompt
+        syscall
+        #przedstawienie sinusa
+	mtc1 $t9, $f12
+	cvt.s.w $f12, $f12
+	li $t1, 16777216
+	mtc1 $t1, $f11
+	cvt.s.w $f11, $f11
+	div.s $f12, $f12, $f11
+	li $v0, 2
+        syscall
+	
